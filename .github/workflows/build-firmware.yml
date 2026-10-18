@@ -59,30 +59,50 @@ jobs:
       - name: Instalar PlatformIO
         run: pip install platformio
 
-      - name: Configuració Catalunya
+      - name: Configuracio Catalunya
+        if: matrix.adv != ''
+        env:
+          ENV_NAME: ${{ matrix.env }}
+          ADV: ${{ matrix.adv }}
         run: |
-          set -e
-          ENV="${{ matrix.env }}"
-          FLAGS="-U LORA_FREQ -D LORA_FREQ=869.618 -U LORA_BW -D LORA_BW=62.5 -U LORA_SF -D LORA_SF=7 -U LORA_CR -D LORA_CR=6"
-          if [ -n "${{ matrix.adv }}" ]; then
-            FLAGS="$FLAGS -U ADVERT_NAME -D ADVERT_NAME='\"${{ matrix.adv }}\"'"
-          fi
-          cat >> platformio.ini <<EOF
-
-          [env:cat_build]
-          extends = env:$ENV
-          build_flags =
-            \${env:$ENV.build_flags}
-            $FLAGS
-          EOF
-          tail -8 platformio.ini
+          python3 - <<'PYEOF'
+          import glob, os, re, sys
+          env = os.environ["ENV_NAME"]
+          adv = os.environ["ADV"]
+          flags = ("-U LORA_FREQ -D LORA_FREQ=869.618 -U LORA_BW -D LORA_BW=62.5 "
+                   "-U LORA_SF -D LORA_SF=7 -U LORA_CR -D LORA_CR=6 "
+                   "-U ADVERT_NAME -D ADVERT_NAME='\"%s\"'" % adv)
+          header = "[env:%s]" % env
+          for path in glob.glob("**/platformio.ini", recursive=True):
+              if ".pio" in path.split(os.sep):
+                  continue
+              lines = open(path, encoding="utf-8").read().split("\n")
+              starts = [i for i, l in enumerate(lines) if l.strip() == header]
+              if not starts:
+                  continue
+              i = starts[0] + 1
+              while i < len(lines) and not lines[i].startswith("[") and not re.match(r"build_flags\s*=", lines[i]):
+                  i += 1
+              if i >= len(lines) or lines[i].startswith("["):
+                  sys.exit("L'entorn %s no te build_flags propi a %s" % (env, path))
+              j = i + 1
+              while j < len(lines) and lines[j].strip() and (lines[j][0] in " \t;#"):
+                  j += 1
+              lines.insert(j, "  " + flags)
+              open(path, "w", encoding="utf-8").write("\n".join(lines))
+              print("Configurat", env, "a", path)
+              break
+          else:
+              sys.exit("No trobo l'entorn " + env)
+          PYEOF
+          git diff | tail -15
       - name: Compilar ${{ matrix.env }}
-        run: pio run -e cat_build
+        run: pio run -e ${{ matrix.env }}
 
       - name: Recoger ficheros
         run: |
           set -e
-          B=".pio/build/cat_build"
+          B=".pio/build/${{ matrix.env }}"
           N="${{ matrix.name }}"
           VER="$(git describe --tags --always | sed -E 's/^[A-Za-z_-]+-v/v/')"
           mkdir -p out
