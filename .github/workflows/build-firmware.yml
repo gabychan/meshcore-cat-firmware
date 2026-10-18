@@ -21,18 +21,24 @@ jobs:
         include:
           - env: waveshare_rp2040_lora_repeater
             name: rp2040-waveshare-repeater
+            adv: RP2040-Cat
           - env: GAT562_30S_Mesh_Kit_repeater
             name: gat562-30s-repeater
+            adv: GAT562-Cat
           - env: ProMicro_repeater
             name: e22p-nrf52840-repeater
+            adv: E22P-Cat
           - env: Heltec_v3_repeater
             name: heltec-v3-repeater
+            adv: HeltecV3-Cat
           - env: t1000e_companion_radio_ble
             name: t1000e-companion
           - env: Heltec_t114_repeater
             name: heltec-t114-repeater
+            adv: T114-Cat
           - env: heltec_v4_repeater
             name: heltec-v4-repeater
+            adv: HeltecV4-Cat
             flash: 16MB
     steps:
       - uses: actions/checkout@v4
@@ -53,13 +59,30 @@ jobs:
       - name: Instalar PlatformIO
         run: pip install platformio
 
+      - name: Configuració Catalunya
+        run: |
+          set -e
+          ENV="${{ matrix.env }}"
+          FLAGS="-U LORA_FREQ -D LORA_FREQ=869.618 -U LORA_BW -D LORA_BW=62.5 -U LORA_SF -D LORA_SF=7 -U LORA_CR -D LORA_CR=6"
+          if [ -n "${{ matrix.adv }}" ]; then
+            FLAGS="$FLAGS -U ADVERT_NAME -D ADVERT_NAME='\"${{ matrix.adv }}\"'"
+          fi
+          cat >> platformio.ini <<EOF
+
+          [env:cat_build]
+          extends = env:$ENV
+          build_flags =
+            \${env:$ENV.build_flags}
+            $FLAGS
+          EOF
+          tail -8 platformio.ini
       - name: Compilar ${{ matrix.env }}
-        run: pio run -e ${{ matrix.env }}
+        run: pio run -e cat_build
 
       - name: Recoger ficheros
         run: |
           set -e
-          B=".pio/build/${{ matrix.env }}"
+          B=".pio/build/cat_build"
           N="${{ matrix.name }}"
           VER="$(git describe --tags --always | sed -E 's/^[A-Za-z_-]+-v/v/')"
           mkdir -p out
