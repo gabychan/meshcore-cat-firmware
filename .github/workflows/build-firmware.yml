@@ -1,0 +1,120 @@
+name: Build MeshCore firmware (Catalunya)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch o tag de meshcore-dev/MeshCore a compilar"
+        default: "main"
+  schedule:
+    - cron: "0 5 * * 1" # cada lunes 05:00 UTC
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: waveshare_rp2040_lora_repeater
+            name: rp2040-waveshare
+          - env: GAT562_30S_Mesh_Kit_repeater
+            name: gat562-30s
+          - env: ProMicro_repeater
+            name: e22p-nrf52840
+          - env: Heltec_v3_repeater
+            name: heltec-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: meshcore-dev/MeshCore
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Instalar PlatformIO
+        run: pip install platformio
+
+      - name: Compilar ${{ matrix.env }}
+        run: pio run -e ${{ matrix.env }}
+
+      - name: Recoger ficheros
+        run: |
+          set -e
+          B=".pio/build/${{ matrix.env }}"
+          N="${{ matrix.name }}"
+          VER="$(git describe --tags --always)"
+          mkdir -p out
+          ls -la "$B" | head -50
+
+          # RP2040 / algunos nRF52: UF2 directo
+          if [ -f "$B/firmware.uf2" ]; then
+            cp "$B/firmware.uf2" "out/$N-$VER.uf2"
+          fi
+
+          # nRF52840: si no hay UF2, convertir el .hex (family 0xADA52840)
+          if [ ! -f "out/$N-$VER.uf2" ] && [ -f "$B/firmware.hex" ]; then
+            curl -sSLO https://raw.githubusercontent.com/microsoft/uf2/master/utils/uf2conv.py
+            curl -sSLO https://raw.githubusercontent.com/microsoft/uf2/master/utils/uf2families.json
+            python uf2conv.py "$B/firmware.hex" -c -f 0xADA52840 -o "out/$N-$VER.uf2"
+          fi
+
+          # nRF52: paquete DFU para OTA por Bluetooth
+          if [ -f "$B/firmware.zip" ]; then
+            cp "$B/firmware.zip" "out/$N-$VER-ota-dfu.zip"
+          fi
+
+          # ESP32: .bin para OTA por WiFi y .merged para flashear de cero
+          if [ -f "$B/firmware.bin" ]; then
+            cp "$B/firmware.bin" "out/$N-$VER-ota.bin"
+          fi
+          if [ -f "$B/firmware-merged.bin" ]; then
+            cp "$B/firmware-merged.bin" "out/$N-$VER-merged.bin"
+          fi
+
+          ls -la out
+          test -n "$(ls -A out)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fw-${{ matrix.name }}
+          path: out/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fw-*
+          merge-multiple: true
+          path: dist
+
+      - name: Sumas SHA256 y fecha
+        id: meta
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: fw-${{ steps.meta.outputs.date }}
+          name: Firmwares MeshCore Catalunya ${{ steps.meta.outputs.date }}
+          body: |
+            Repetidors MeshCore compilats de meshcore-dev/MeshCore (${{ inputs.ref || 'main' }}).
+            Verifica els fitxers amb SHA256SUMS.txt.
+          files: dist/*
+          make_latest: true
