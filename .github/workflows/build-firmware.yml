@@ -69,9 +69,9 @@ jobs:
           import glob, os, re, sys
           env = os.environ["ENV_NAME"]
           adv = os.environ["ADV"]
-          flags = ("-U LORA_FREQ -D LORA_FREQ=869.618 -U LORA_BW -D LORA_BW=62.5 "
-                   "-U LORA_SF -D LORA_SF=7 -U LORA_CR -D LORA_CR=6 "
-                   "-U ADVERT_NAME -D ADVERT_NAME='\"%s\"'" % adv)
+          flags = ("-D LORA_FREQ=869.618 -D LORA_BW=62.5 "
+                   "-D LORA_SF=7 -D LORA_CR=6 "
+                   "-D ADVERT_NAME='\"%s\"'" % adv)
           header = "[env:%s]" % env
           for path in glob.glob("**/platformio.ini", recursive=True):
               if ".pio" in path.split(os.sep):
