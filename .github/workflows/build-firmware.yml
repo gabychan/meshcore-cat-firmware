@@ -29,6 +29,11 @@ jobs:
             name: heltec-v3-repeater
           - env: t1000e_companion_radio_ble
             name: t1000e-companion
+          - env: Heltec_t114_repeater
+            name: heltec-t114-repeater
+          - env: heltec_v4_repeater
+            name: heltec-v4-repeater
+            flash: 16MB
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,7 +89,7 @@ jobs:
               pip install esptool
               BOOT_APP0="$(find "$HOME/.platformio/packages" -name boot_app0.bin | head -1)"
               python -m esptool --chip esp32s3 merge_bin -o "$B/firmware-merged.bin" \
-                --flash_mode dio --flash_size 8MB \
+                --flash_mode dio --flash_size ${{ matrix.flash || '8MB' }} \
                 0x0 "$B/bootloader.bin" 0x8000 "$B/partitions.bin" \
                 0xe000 "$BOOT_APP0" 0x10000 "$B/firmware.bin"
             else
