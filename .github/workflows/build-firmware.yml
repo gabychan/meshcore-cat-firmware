@@ -53,10 +53,10 @@ jobs:
         run: |
           set -e
           B=".pio/build/${{ matrix.env }}"
-          N="${{ matrix.name }}"
-          VER="$(git describe --tags --always)"
+          N="${{ matrix.name }}-repeater"
+          VER="$(git describe --tags --always | sed -E 's/^[A-Za-z_-]+-v/v/')"
           mkdir -p out
-          ls -la "$B" | head -50
+          ls -la "$B"
 
           # RP2040 / algunos nRF52: UF2 directo
           if [ -f "$B/firmware.uf2" ]; then
@@ -75,17 +75,26 @@ jobs:
             cp "$B/firmware.zip" "out/$N-$VER-ota-dfu.zip"
           fi
 
-          # ESP32: .bin para OTA por WiFi y .merged para flashear de cero
-          if [ -f "$B/firmware.bin" ]; then
+          # ESP32 (sin UF2): .bin para OTA por WiFi y .merged para flashear de cero
+          if [ ! -f "out/$N-$VER.uf2" ] && [ -f "$B/firmware.bin" ]; then
             cp "$B/firmware.bin" "out/$N-$VER-ota.bin"
-          fi
-          if [ -f "$B/firmware-merged.bin" ]; then
-            cp "$B/firmware-merged.bin" "out/$N-$VER-merged.bin"
+            if [ ! -f "$B/firmware-merged.bin" ] && [ -f "$B/bootloader.bin" ] && [ -f "$B/partitions.bin" ]; then
+              pip install esptool
+              BOOT_APP0="$(find "$HOME/.platformio/packages" -name boot_app0.bin | head -1)"
+              python -m esptool --chip esp32s3 merge_bin -o "$B/firmware-merged.bin" \
+                --flash_mode dio --flash_size 8MB \
+                0x0 "$B/bootloader.bin" 0x8000 "$B/partitions.bin" \
+                0xe000 "$BOOT_APP0" 0x10000 "$B/firmware.bin"
+            else
+              echo "AVISO: faltan bootloader.bin o partitions.bin, no se genera el merged"
+            fi
+            if [ -f "$B/firmware-merged.bin" ]; then
+              cp "$B/firmware-merged.bin" "out/$N-$VER-merged.bin"
+            fi
           fi
 
           ls -la out
           test -n "$(ls -A out)"
-
       - uses: actions/upload-artifact@v4
         with:
           name: fw-${{ matrix.name }}
