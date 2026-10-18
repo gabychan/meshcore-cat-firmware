@@ -117,4 +117,4 @@ jobs:
             Repetidors MeshCore compilats de meshcore-dev/MeshCore (${{ inputs.ref || 'main' }}).
             Verifica els fitxers amb SHA256SUMS.txt.
           files: dist/*
-          make_latest: true
+          make_latest: true# reindex
