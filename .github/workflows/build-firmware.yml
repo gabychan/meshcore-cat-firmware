@@ -20,13 +20,15 @@ jobs:
       matrix:
         include:
           - env: waveshare_rp2040_lora_repeater
-            name: rp2040-waveshare
+            name: rp2040-waveshare-repeater
           - env: GAT562_30S_Mesh_Kit_repeater
-            name: gat562-30s
+            name: gat562-30s-repeater
           - env: ProMicro_repeater
-            name: e22p-nrf52840
+            name: e22p-nrf52840-repeater
           - env: Heltec_v3_repeater
-            name: heltec-v3
+            name: heltec-v3-repeater
+          - env: t1000e_companion_radio_ble
+            name: t1000e-companion
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,7 +55,7 @@ jobs:
         run: |
           set -e
           B=".pio/build/${{ matrix.env }}"
-          N="${{ matrix.name }}-repeater"
+          N="${{ matrix.name }}"
           VER="$(git describe --tags --always | sed -E 's/^[A-Za-z_-]+-v/v/')"
           mkdir -p out
           ls -la "$B"
