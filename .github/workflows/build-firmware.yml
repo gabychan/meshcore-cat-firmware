@@ -60,7 +60,28 @@ jobs:
             adv: TEcho-Cat
           - env: LilyGo_T-Echo_companion_radio_ble
             name: techo-companion
-    steps:
+          - env: Heltec_v3_companion_radio_ble
+            name: heltec-v3-companion
+          - env: heltec_v4_companion_radio_ble
+            name: heltec-v4-companion
+            flash: 16MB
+          - env: Heltec_t114_companion_radio_ble
+            name: heltec-t114-companion
+          - env: GAT562_30S_Mesh_Kit_companion_radio_ble
+            name: gat562-30s-companion
+          - env: LilyGo_TDeck_companion_radio_ble
+            name: tdeck-companion
+            flash: 16MB
+          - env: WioTrackerL1_repeater
+            name: wio-tracker-l1-repeater
+            adv: WioL1-Cat
+          - env: WioTrackerL1_companion_radio_ble
+            name: wio-tracker-l1-companion
+          - env: ThinkNode_M1_repeater
+            name: thinknode-m1-repeater
+            adv: ThinkM1-Cat
+          - env: ThinkNode_M1_companion_radio_ble
+            name: thinknode-m1-companion    steps:
       - uses: actions/checkout@v4
         with:
           repository: meshcore-dev/MeshCore
