@@ -40,6 +40,26 @@ jobs:
             name: heltec-v4-repeater
             adv: HeltecV4-Cat
             flash: 16MB
+          - env: RAK_4631_repeater
+            name: rak4631-repeater
+            adv: RAK4631-Cat
+          - env: RAK_4631_companion_radio_ble
+            name: rak4631-companion
+          - env: Xiao_nrf52_repeater
+            name: xiao-nrf52-repeater
+            adv: XiaoNRF-Cat
+          - env: Xiao_nrf52_companion_radio_ble
+            name: xiao-nrf52-companion
+          - env: Xiao_S3_WIO_repeater
+            name: xiao-s3-repeater
+            adv: XiaoS3-Cat
+          - env: Xiao_S3_WIO_companion_radio_ble
+            name: xiao-s3-companion
+          - env: LilyGo_T-Echo_repeater
+            name: techo-repeater
+            adv: TEcho-Cat
+          - env: LilyGo_T-Echo_companion_radio_ble
+            name: techo-companion
     steps:
       - uses: actions/checkout@v4
         with:
@@ -127,7 +147,7 @@ jobs:
 
           # ESP32 (sin UF2): .bin para OTA por WiFi y .merged para flashear de cero
           if [ ! -f "out/$N-$VER.uf2" ] && [ -f "$B/firmware.bin" ]; then
-            cp "$B/firmware.bin" "out/$N-$VER-ota.bin"
+            [ "${N#*companion}" != "$N" ] || cp "$B/firmware.bin" "out/$N-$VER-ota.bin"
             if [ ! -f "$B/firmware-merged.bin" ] && [ -f "$B/bootloader.bin" ] && [ -f "$B/partitions.bin" ]; then
               pip install esptool
               BOOT_APP0="$(find "$HOME/.platformio/packages" -name boot_app0.bin | head -1)"
@@ -152,6 +172,7 @@ jobs:
 
   release:
     needs: build
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
