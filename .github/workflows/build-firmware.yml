@@ -81,7 +81,8 @@ jobs:
             name: thinknode-m1-repeater
             adv: ThinkM1-Cat
           - env: ThinkNode_M1_companion_radio_ble
-            name: thinknode-m1-companion    steps:
+            name: thinknode-m1-companion
+    steps:
       - uses: actions/checkout@v4
         with:
           repository: meshcore-dev/MeshCore
