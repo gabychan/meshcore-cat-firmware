@@ -87,6 +87,11 @@ jobs:
             adv: RAK3401-Cat
           - env: RAK_3401_companion_radio_ble
             name: rak3401-companion
+          - env: RAK_WisMesh_Tag_repeater
+            name: wismesh-tag-repeater
+            adv: WisTag-Cat
+          - env: RAK_WisMesh_Tag_companion_radio_ble
+            name: wismesh-tag-companion
     steps:
       - uses: actions/checkout@v4
         with:
