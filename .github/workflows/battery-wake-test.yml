@@ -1,0 +1,146 @@
+name: Build battery-wake test (ProMicro/E22P + GAT562 30S)
+
+# Prueba: aplica patches/battery-wake.patch sobre MeshCore y compila los dos
+# repetidores. No toca el workflow principal ni marca nada como "latest".
+on:
+  push:
+    branches: [ cat-battery-wake-test ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  MESHCORE_REF: 75b04ef06def54b348400cb1b138afb6749ffd4f
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: ProMicro_repeater
+            name: e22p-nrf52840-repeater
+            adv: E22P-Cat
+          - env: GAT562_30S_Mesh_Kit_repeater
+            name: gat562-30s-repeater
+            adv: GAT562-Cat
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: meshcore-dev/MeshCore
+          ref: ${{ env.MESHCORE_REF }}
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        with:
+          path: cat
+
+      - name: Aplicar parche battery-wake
+        run: git apply --check cat/patches/battery-wake.patch && git apply cat/patches/battery-wake.patch && git diff --stat
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Instalar PlatformIO
+        run: pip install platformio
+
+      - name: Configuracio Catalunya + power management
+        env:
+          ENV_NAME: ${{ matrix.env }}
+          ADV: ${{ matrix.adv }}
+        run: |
+          python3 - <<'PYEOF'
+          import glob, os, re, sys
+          env = os.environ["ENV_NAME"]
+          adv = os.environ["ADV"]
+          flags = ("-D LORA_FREQ=869.618 -D LORA_BW=62.5 "
+                   "-D LORA_SF=7 -D LORA_CR=6 "
+                   "-D ADVERT_NAME='\"%s\"'" % adv)
+          flags += " -D NRF52_POWER_MANAGEMENT"
+          header = "[env:%s]" % env
+          for path in glob.glob("**/platformio.ini", recursive=True):
+              if ".pio" in path.split(os.sep):
+                  continue
+              lines = open(path, encoding="utf-8").read().split("\n")
+              starts = [i for i, l in enumerate(lines) if l.strip() == header]
+              if not starts:
+                  continue
+              i = starts[0] + 1
+              while i < len(lines) and not lines[i].startswith("[") and not re.match(r"build_flags\s*=", lines[i]):
+                  i += 1
+              if i >= len(lines) or lines[i].startswith("["):
+                  sys.exit("L'entorn %s no te build_flags propi a %s" % (env, path))
+              j = i + 1
+              while j < len(lines) and lines[j].strip() and (lines[j][0] in " \t;#"):
+                  j += 1
+              lines.insert(j, "  " + flags)
+              open(path, "w", encoding="utf-8").write("\n".join(lines))
+              print("Configurat", env, "a", path)
+              break
+          else:
+              sys.exit("No trobo l'entorn " + env)
+          PYEOF
+          git diff -- '*.ini' | tail -15
+
+      - name: Compilar ${{ matrix.env }}
+        run: pio run -e ${{ matrix.env }}
+
+      - name: Recoger ficheros
+        run: |
+          set -e
+          B=".pio/build/${{ matrix.env }}"
+          N="${{ matrix.name }}"
+          VER="battery-wake-$(git rev-parse --short HEAD)"
+          mkdir -p out
+          ls -la "$B"
+          if [ -f "$B/firmware.uf2" ]; then
+            cp "$B/firmware.uf2" "out/$N-$VER.uf2"
+          fi
+          if [ ! -f "out/$N-$VER.uf2" ] && [ -f "$B/firmware.hex" ]; then
+            curl -sSLO https://raw.githubusercontent.com/microsoft/uf2/master/utils/uf2conv.py
+            curl -sSLO https://raw.githubusercontent.com/microsoft/uf2/master/utils/uf2families.json
+            python uf2conv.py "$B/firmware.hex" -c -f 0xADA52840 -o "out/$N-$VER.uf2"
+          fi
+          if [ -f "$B/firmware.zip" ]; then
+            cp "$B/firmware.zip" "out/$N-$VER-ota-dfu.zip"
+          fi
+          ls -la out
+          test -n "$(ls -A out)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fw-${{ matrix.name }}
+          path: out/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fw-*
+          merge-multiple: true
+          path: dist
+
+      - name: Pre-release de prueba
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat > ../notes.md <<'NOTES'
+          PRE-RELEASE DE PRUEBA, sin validar en banco.
+          MeshCore (commit fijado) + patches/battery-wake.patch: proteccion de arranque con bateria baja y despertar por LPCOMP para ProMicro/E22P (9/16 VDD, divisor 2:1) y GAT562 30S (5/8 VDD).
+          Cambios: NRF52_POWER_MANAGEMENT activado en estos dos repetidores, soporte de ProMicro y espera de 2,5 s tras armar el comparador.
+          NOTES
+          gh release create battery-wake-cat-test1 * --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "battery-wake MeshCore Catalunya test1 (pre-release)" --notes-file ../notes.md

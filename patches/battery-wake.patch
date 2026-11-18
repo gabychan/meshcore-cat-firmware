@@ -1,0 +1,92 @@
+diff --git a/src/helpers/NRF52Board.cpp b/src/helpers/NRF52Board.cpp
+index f2fa774..5a3f682 100644
+--- a/src/helpers/NRF52Board.cpp
++++ b/src/helpers/NRF52Board.cpp
+@@ -218,6 +218,10 @@ void NRF52Board::configureVoltageWake(uint8_t ain_channel, uint8_t lpcomp_refsel
+     delayMicroseconds(50);
+   }
+ 
++  // Entering SYSTEMOFF right after arming did not wake the node on a ProMicro
++  // (nRF52840); with the comparator armed for 2.5 s beforehand it always did.
++  delay(2500);
++
+   if (lpcomp_refsel == 7) {
+     MESH_DEBUG_PRINTLN("PWRMGT: LPCOMP wake armed (AIN%d, ref=ARef)", PWRMGT_LPCOMP_AIN);
+   } else if (lpcomp_refsel <= 6) {
+diff --git a/variants/promicro/PromicroBoard.cpp b/variants/promicro/PromicroBoard.cpp
+index 7011521..8e4985d 100644
+--- a/variants/promicro/PromicroBoard.cpp
++++ b/variants/promicro/PromicroBoard.cpp
+@@ -3,6 +3,26 @@
+ 
+ #include "PromicroBoard.h"
+ 
++#ifdef NRF52_POWER_MANAGEMENT
++const PowerMgtConfig power_config = {
++  .lpcomp_ain_channel = PWRMGT_LPCOMP_AIN,
++  .lpcomp_refsel = PWRMGT_LPCOMP_REFSEL,
++  .voltage_bootlock = PWRMGT_VOLTAGE_BOOTLOCK
++};
++
++void PromicroBoard::initiateShutdown(uint8_t reason) {
++  // Cut power to the LoRa module before sleeping
++  digitalWrite(SX126X_POWER_EN, LOW);
++
++  if (reason == SHUTDOWN_REASON_LOW_VOLTAGE ||
++      reason == SHUTDOWN_REASON_BOOT_PROTECT) {
++    configureVoltageWake(power_config.lpcomp_ain_channel, power_config.lpcomp_refsel);
++  }
++
++  enterSystemOff(reason);
++}
++#endif // NRF52_POWER_MANAGEMENT
++
+ void PromicroBoard::begin() {    
+     NRF52Board::begin();
+     btn_prev_state = HIGH;
+@@ -20,6 +40,10 @@ void PromicroBoard::begin() {
+     Wire.begin();
+ 
+     pinMode(SX126X_POWER_EN, OUTPUT);
++#ifdef NRF52_POWER_MANAGEMENT
++    // Boot voltage protection (does not return if the battery is too low)
++    checkBootVoltage(&power_config);
++#endif
+     digitalWrite(SX126X_POWER_EN, HIGH);
+     delay(10);   // give sx1262 some time to power up
+ }
+\ No newline at end of file
+diff --git a/variants/promicro/PromicroBoard.h b/variants/promicro/PromicroBoard.h
+index ee16c96..41261b3 100644
+--- a/variants/promicro/PromicroBoard.h
++++ b/variants/promicro/PromicroBoard.h
+@@ -11,6 +11,9 @@ class PromicroBoard : public NRF52BoardDCDC {
+ protected:
+   uint8_t btn_prev_state;
+   float adc_mult = ADC_MULTIPLIER;
++#ifdef NRF52_POWER_MANAGEMENT
++  void initiateShutdown(uint8_t reason) override;
++#endif
+ 
+ public:
+   PromicroBoard() : NRF52Board("ProMicro_OTA") {}
+diff --git a/variants/promicro/variant.h b/variants/promicro/variant.h
+index e8a7833..2c68b80 100644
+--- a/variants/promicro/variant.h
++++ b/variants/promicro/variant.h
+@@ -25,6 +25,15 @@
+ #define BATTERY_PIN          (17)
+ #define ADC_RESOLUTION       12
+ 
++// Power management (only active with -D NRF52_POWER_MANAGEMENT)
++// Won't boot below this voltage (mV); the node sleeps in SYSTEMOFF instead.
++#define PWRMGT_VOLTAGE_BOOTLOCK 3300
++// LPCOMP wake: battery on P0.31 = AIN7 through a 2:1 divider.
++// REFSEL 12 = 9/16 VDD (3.3 V) -> wakes at VBAT ~ 3.7 V (plus hysteresis).
++// 5/8 would need ~4.1 V, too high to reach on a battery.
++#define PWRMGT_LPCOMP_AIN 7
++#define PWRMGT_LPCOMP_REFSEL 12
++
+ ////////////////////////////////////////////////////////////////////////////////
+ // Number of pins
+ 
